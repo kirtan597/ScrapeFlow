@@ -1,442 +1,614 @@
-# Scraper Flow
+﻿# ScrapeFlow
 
-Scrape Flow is a comprehensive web scraping and automation platform that allows users to create, schedule, and manage sophisticated web scraping workflows with an intuitive visual interface. This application provides a powerful yet user-friendly way to extract data from websites, process it with AI, perform complex data transformations, and deliver results through multiple channels, including webhooks and email.
+> A full-stack, visual web-scraping automation SaaS built with **Next.js 15 (App Router)**, **React Flow**, **Prisma**, **Clerk Auth**, and **Stripe**.
+
+Users build scraping workflows by connecting task-nodes on a drag-and-drop canvas, schedule them with cron expressions, and pay for execution via a credit system.
+
+---
 
 ## Table of Contents
+
 - [Features](#features)
-- [Task Types](#task-types)
-- [Technology Stack](#technology-stack)
-- [Getting Started](#getting-started)
-- [Architecture](#architecture)
-- [Workflow System](#workflow-system)
-- [Scheduling & Automation](#scheduling--automation)
-- [Credit System & Billing](#credit-system--billing)
-- [Security & Credentials](#security--credentials)
-- [Analytics & Monitoring](#analytics--monitoring)
+- [Tech Stack](#tech-stack)
+- [Architecture Overview](#architecture-overview)
+- [Project Structure](#project-structure)
+- [API Endpoints](#api-endpoints)
+- [Server Actions](#server-actions)
+- [Workflow Task Catalog](#workflow-task-catalog)
+- [Database Schema](#database-schema)
 - [Environment Variables](#environment-variables)
-- [Screenshots](#screenshots)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
+- [Getting Started](#getting-started)
+- [Running Locally](#running-locally)
+- [Deployment Notes](#deployment-notes)
+
+---
 
 ## Features
 
-### Core Capabilities
-- **Visual Workflow Builder**: Drag-and-drop interface for creating complex scraping workflows
-- **22 Task Types**: Comprehensive set of tasks across 7 categories for all automation needs
-- **AI-Powered Extraction**: Intelligent data extraction using AI models
-- **Real-time Execution**: Live workflow execution with detailed logging and monitoring
-- **Advanced Scheduling**: Hybrid cron system supporting both simple and complex schedules
-- **Credit Management**: Transparent usage-based billing with Stripe integration
-- **Secure Credential Storage**: Encrypted storage for API keys and authentication data
-- **Multi-format Output**: JSON, CSV, and custom data transformation support
+| Feature | Details |
+|---|---|
+| 🔐 **Authentication** | Clerk — sign-in / sign-up with redirect to onboarding setup |
+| 🎨 **Visual Workflow Editor** | Drag-and-drop canvas powered by `@xyflow/react` |
+| ▶️ **Manual Execution** | Run any published workflow on-demand |
+| ⏰ **Cron Scheduling** | Standard 5-field cron _and_ simple interval syntax (`2m`, `1h`, `3d`) |
+| 💳 **Credit System** | Users start with 100 free credits; buy packs via Stripe Checkout |
+| 🔒 **Secure Credentials** | AES-256-CBC encrypted storage for API keys, SMTP, and custom secrets |
+| 🤖 **AI Extraction** | OpenAI-powered data extraction node |
+| 📧 **Email Delivery** | Nodemailer `SEND_EMAIL` task using stored SMTP credentials |
+| 📊 **Analytics Dashboard** | Period-based charts for execution stats and daily credit usage |
+| 📥 **File Downloads** | Download scraped files directly from the execution log UI |
+| 📸 **Screenshots** | Take and download full-page browser screenshots |
+| 🌗 **Dark / Light Theme** | `next-themes` toggle in the sidebar header |
 
-### Advanced Features
-- **Conditional Logic**: Dynamic workflow paths based on data conditions
-- **Loop Processing**: Iterate over data sets with configurable loop controls
-- **Email Automation**: Send rich HTML/text emails with attachments
-- **File Downloads**: Automated file downloading and processing
-- **Screenshot Capture**: Full-page and viewport screenshots with quality controls
-- **Table Extraction**: Structured data extraction from HTML tables
-- **Data Transformation**: Built-in data processing and formatting tools
+---
 
-### Enterprise Features
-- **Scalable Architecture**: Built for high-volume data processing
-- **Analytics Dashboard**: Comprehensive execution statistics and credit usage tracking
-- **User Management**: Multi-user support with Clerk authentication
-- **Rate Limiting**: Built-in protection against abuse
-- **Webhook Integration**: Real-time data delivery to external systems
-- **Error Handling**: Robust error recovery and retry mechanisms
+## Tech Stack
 
-## Task Types
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 (App Router, Server Components, Server Actions) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v3 + shadcn/ui |
+| Flow Canvas | `@xyflow/react` v12 |
+| Database ORM | Prisma 5 → PostgreSQL |
+| Auth | Clerk (`@clerk/nextjs` v6) |
+| Payments | Stripe (`stripe` v17) |
+| Browser Automation | Puppeteer Core + `@sparticuz/chromium-min` |
+| AI | OpenAI SDK v4 |
+| Email | Nodemailer |
+| Scheduling | `cron-parser` + `cronstrue` |
+| State / Data Fetching | TanStack React Query v5 |
+| Charts | Recharts |
 
-### Browser Automation (5 Tasks)
-- **Launch Browser** (5 credits): Initialize browser and navigate to websites
-- **Navigate URL** (2 credits): Navigate to specific URLs within workflows
-- **Page to HTML** (2 credits): Extract full HTML content from web pages
-- **Wait for Element** (1 credit): Wait for specific elements to appear/disappear
-- **Take Screenshot** (3 credits): Capture full-page or viewport screenshots
+---
 
-### Element Interaction (4 Tasks)
-- **Click Element** (3 credits): Interact with clickable elements on pages
-- **Fill Input** (1 credit): Fill form inputs with dynamic data
-- **Scroll to Element** (1 credit): Scroll to specific elements on pages
-- **Wait Delay** (1 credit): Add controlled delays in workflow execution
+## Architecture Overview
 
-### Data Extraction (3 Tasks)
-- **Extract Text from Element** (2 credits): Extract text content using CSS selectors
-- **Extract Table Data** (3 credits): Extract structured data from HTML tables
-- **Extract Data with AI** (4 credits): AI-powered intelligent data extraction
+```
+Browser
+  │
+  ▼
+Next.js App Router (Clerk Middleware → auth guard)
+  │
+  ├─ /app/(auth)                  # Public: Sign-in / Sign-up (Clerk-hosted)
+  ├─ /app/(dashboard)             # Protected: all authenticated views
+  │    ├─ /                       # Analytics home (stats + charts)
+  │    ├─ /workflows              # Workflow list + CRUD
+  │    ├─ /billing                # Credit balance + purchase packs
+  │    └─ /credentials            # Encrypted credential store
+  ├─ /app/workflow/editor/[id]    # React Flow visual editor
+  ├─ /app/workflow/runs/[id]      # Execution history & phase viewer
+  ├─ /app/setup                   # New-user onboarding (creates UserBalance)
+  │
+  ├─ GET  /api/workflows/cron     # Cron trigger (called by scheduler)
+  ├─ GET  /api/workflows/execute  # Workflow executor (Bearer auth)
+  └─ POST /api/webhooks/stripe    # Stripe payment webhook
+```
 
-### Data Processing (4 Tasks)
-- **Read Property from JSON** (1 credit): Extract specific properties from JSON data
-- **Add Property to JSON** (1 credit): Add new properties to JSON objects
-- **Data Transform** (2 credits): Advanced data transformation and formatting
-- **Conditional Logic** (1 credit): Create dynamic workflow paths
+### Execution Flow
 
-### Control Flow (1 Task)
-- **Loop** (2 credits): Iterate over data collections with customizable controls
+```
+Cron trigger (external scheduler or LocalCronRunner)
+  │
+  └─▶ GET /api/workflows/cron
+        │  credit pre-check per workflow
+        └─▶ GET /api/workflows/execute?workflowId=<id>  (Bearer API_SECRET)
+              │  create WorkflowExecution + ExecutionPhase rows
+              └─▶ ExecutionWorkflow()
+                    │  reserve credits → iterate phases → run executors
+                    │  decrement credits per task
+                    └─▶ finalize + revalidate cache
+```
 
-### Communication (2 Tasks)
-- **Send Email** (3 credits): Send HTML/text emails with attachment support
-- **Deliver via Webhook** (1 credit): Send data to external APIs and services
+---
 
-### Storage & File Operations (1 Task)
-- **Download File** (3 credits): Download and process files from URLs
+## Project Structure
 
-### AI & Advanced (1 Task)
-- **Extract Data with AI** (4 credits): Leverage AI for complex data extraction scenarios
+```
+scraper-flow/
+├── actions/
+│   ├── analytics/
+│   │   ├── getCreditUsageInPeriod.ts
+│   │   ├── getPeriods.ts
+│   │   ├── getStatsCardsValues.ts
+│   │   └── getWorkflowExecutionsStats.ts
+│   ├── billing/
+│   │   ├── getAvailableCredits.ts
+│   │   ├── getUserPurchaseHistory.ts
+│   │   ├── purchaseCredits.ts        # Creates Stripe Checkout session
+│   │   └── setupUser.ts              # Upserts UserBalance on first login
+│   ├── credentials/
+│   │   ├── createCredential.ts       # Encrypts & stores credential
+│   │   ├── deleteCredential.ts
+│   │   └── getCredentialsForUser.ts
+│   └── workflows/
+│       ├── createWorkflow.ts
+│       ├── deleteWorkflow.ts
+│       ├── duplicateWorkflow.ts
+│       ├── getWorkflowExecutions.ts
+│       ├── getWorkflowExecutionWithPhase.ts
+│       ├── getWorkflowPhaseDetails.ts
+│       ├── getWorkflowsForUser.ts
+│       ├── PublishWorkflow.ts        # Validates plan, sets status=PUBLISHED
+│       ├── UnpublishWorkflow.ts
+│       ├── removeWorkflowSchedule.ts
+│       ├── runWorkflow.ts            # Manual trigger → calls execute API
+│       ├── updateWorkflow.ts         # Save definition (nodes + edges)
+│       └── updateWorkflowCron.ts     # Set/update cron schedule
+│
+├── app/
+│   ├── (auth)/
+│   │   ├── sign-in/[[...sign-in]]/page.tsx
+│   │   └── sign-up/[[...sign-up]]/page.tsx
+│   ├── (dashboard)/
+│   │   ├── layout.tsx                # Sidebar + header wrapper
+│   │   ├── (home)/page.tsx           # Analytics dashboard
+│   │   ├── billing/page.tsx          # Credit packs + purchase history
+│   │   ├── credentials/page.tsx      # Credential manager
+│   │   └── workflows/page.tsx        # Workflow list
+│   ├── api/
+│   │   ├── webhooks/stripe/route.ts  # Stripe webhook handler
+│   │   └── workflows/
+│   │       ├── cron/route.ts         # Scheduled execution trigger
+│   │       └── execute/route.ts      # Workflow executor endpoint
+│   ├── setup/page.tsx                # Onboarding: creates UserBalance
+│   ├── workflow/
+│   │   ├── editor/[workflowId]/page.tsx
+│   │   └── runs/[workflowId]/[executionId]/page.tsx
+│   ├── globals.css
+│   ├── layout.tsx                    # Root layout (Clerk + providers)
+│   └── not-found.tsx
+│
+├── components/
+│   ├── Sidebar.tsx
+│   ├── BreadcrumbHeader.tsx
+│   ├── LocalCronRunner.tsx           # Client-side dev cron trigger
+│   ├── Logo.tsx
+│   ├── ThemeModeToggle.tsx
+│   ├── UserAvailableCreditsBadge.tsx
+│   └── ui/                          # shadcn/ui component library
+│
+├── lib/
+│   ├── encryption.ts                 # AES-256-CBC encrypt/decrypt
+│   ├── prisma.ts                     # Prisma client singleton
+│   ├── log.ts                        # LogCollector factory
+│   ├── credential/
+│   │   ├── credentialHelper.ts
+│   │   └── getCredentialValue.ts     # Decrypt credential by name
+│   ├── cron/
+│   │   └── scheduleParser.ts         # Parse cron + interval expressions
+│   ├── helper/
+│   │   ├── appUrl.ts
+│   │   ├── dates.ts
+│   │   ├── phases.ts
+│   │   └── waitFor.ts
+│   ├── stripe/
+│   │   ├── stripe.ts                 # Stripe client instance
+│   │   └── handleCheckoutSessionCompleted.ts
+│   └── workflow/
+│       ├── createFlowNode.ts
+│       ├── creditCheck.ts            # Pre-check & reserve credits
+│       ├── eligibility.ts
+│       ├── executionPlan.ts          # Build phase plan from DAG
+│       ├── executionWorkflow.ts      # Core execution engine
+│       ├── executor/                 # 21 task executor implementations
+│       └── task/                     # 21 task type definitions + registry
+│
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+│
+├── schema/
+│   ├── credential.ts
+│   └── workflow.ts
+│
+├── types/
+│   ├── TaskType.ts
+│   ├── analytics.ts
+│   ├── appNode.ts
+│   ├── billing.ts
+│   ├── executor.ts
+│   ├── log.ts
+│   └── workflow.ts
+│
+├── .env.example
+├── .puppeteerrc.cjs
+├── middleware.ts
+├── next.config.mjs
+├── tailwind.config.ts
+└── tsconfig.json
+```
 
-## Technology Stack
+---
 
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **UI Components**: Shadcn UI (built on Radix UI)
-- **Styling**: Tailwind CSS
-- **State Management**: TanStack Query (React Query)
-- **Forms**: React Hook Form with Zod validation
-- **Data Visualization**: Recharts
-- **Flow Editor**: XYFlow (React Flow)
+## API Endpoints
 
-### Backend
-- **API**: Next.js Server Actions and API Routes
-- **Database ORM**: Prisma
-- **Authentication**: Clerk
-- **Payments**: Stripe
-- **Scheduling**: Custom cron scheduler with hybrid approach
-- **Web Scraping**: Puppeteer/Chromium
-- **AI Integration**: OpenAI
-- **Email Service**: Resend
+### `GET /api/workflows/cron`
 
-### Infrastructure
-- **Hosting**: Vercel
-- **Cron Jobs**: Vercel Cron + Browser-based hybrid system
-- **File Storage**: Built-in file download and processing
-- **Encryption**: AES-256-CBC for credential storage
+**Purpose:** Scheduled execution trigger — called by an external cron job or the `LocalCronRunner` component during development.
 
-## Live Demo
+**Logic:**
+1. Queries all `PUBLISHED` workflows with `cron` expression where `nextRunAt <= now`.
+2. For each workflow, calls `checkWorkflowCredits()` to verify sufficient credits.
+3. If credits OK → calls `GET /api/workflows/execute?workflowId=<id>` with `Bearer API_SECRET`.
+4. If insufficient → logs failure and skips.
+5. Updates `nextRunAt` for all processed workflows.
 
-Experience Scrape Flow in action at our [Live Demo](https://scrape-flow-demo.vercel.app)
+**Response:**
+```json
+{
+  "workflowsScheduled": 3,
+  "workflowsRun": 2,
+  "workflowsRunDetails": [{ "id": "...", "name": "...", "creditsCost": 5 }],
+  "workflowsSkipped": 1,
+  "skippedDetails": [{ "id": "...", "reason": "insufficient_credits" }],
+  "timestamp": "2026-01-01T00:00:00.000Z"
+}
+```
+
+---
+
+### `GET /api/workflows/execute?workflowId=<id>`
+
+**Purpose:** Execute a single published workflow. Called by `/api/workflows/cron` and the `runWorkflow` server action.
+
+**Auth:** `Authorization: Bearer <API_SECRET>` (validated via `timingSafeEqual`).
+
+**Logic:**
+1. Validates Bearer token.
+2. Fetches workflow + parses `executionPlan`.
+3. Creates `WorkflowExecution` + `ExecutionPhase` rows.
+4. Calls `ExecutionWorkflow()`:
+   - Reserves credits upfront.
+   - Runs each phase executor in order.
+   - Decrements credits per completed task.
+   - Finalizes status: `COMPLETED` or `FAILED`.
+
+| Status | Reason |
+|---|---|
+| `400` | Missing `workflowId` |
+| `401` | Missing/invalid Bearer token |
+| `404` | Workflow or execution plan not found |
+| `500` | Unexpected server error |
+
+---
+
+### `POST /api/webhooks/stripe`
+
+**Purpose:** Receive Stripe events to fulfill credit purchases.
+
+**Auth:** Stripe webhook signature verified via `STRIPE_WEBHOOK_SECRET`.
+
+| Event | Handler |
+|---|---|
+| `checkout.session.completed` | Increments `UserBalance.credits` by pack amount; creates `UserPurchase` record |
+
+---
+
+## Server Actions
+
+All server actions use `"use server"` and authenticate via Clerk's `auth()`.
+
+### Analytics
+
+| Action | Description |
+|---|---|
+| `GetPeriods()` | Year-month periods with execution data |
+| `GetStatsCardsValues(period)` | Workflow executions, phase executions, credits consumed |
+| `GetWorkflowExecutionsStats(period)` | Daily COMPLETED vs FAILED breakdown for charts |
+| `GetCreditUsageInPeriod(period)` | Daily credit spend for billing chart |
+
+### Billing
+
+| Action | Description |
+|---|---|
+| `SetupUser()` | Upsert `UserBalance` (100 credits) → redirect to `/` |
+| `GetAvailableCredits()` | Current credit balance |
+| `GetUserPurchaseHistory()` | All `UserPurchase` records |
+| `PurchaseCredits(packId)` | Create Stripe Checkout session → redirect |
+
+### Credentials
+
+| Action | Description |
+|---|---|
+| `CreateCredential(data)` | AES-256-CBC encrypt value → store in DB |
+| `DeleteCredential(id)` | Delete by ID (ownership verified) |
+| `GetCredentialsForUser()` | List credentials (values NOT returned) |
+
+### Workflows
+
+| Action | Description |
+|---|---|
+| `GetWorkflowsForUser()` | List all workflows with last run info |
+| `CreateWorkflow(data)` | Create new DRAFT workflow |
+| `DeleteWorkflow(id)` | Delete workflow + cascade executions |
+| `DuplicateWorkflow(id)` | Clone as new DRAFT |
+| `UpdateWorkflow(data)` | Save nodes/edges + recalculate `creditsCost` |
+| `PublishWorkflow(id)` | Validate execution plan → set `PUBLISHED` |
+| `UnpublishWorkflow(id)` | Set back to `DRAFT`, clear plan |
+| `RunWorkflow(workflowId)` | Manual trigger via internal API call |
+| `UpdateWorkflowCron(id, cron)` | Validate + set cron + `nextRunAt` |
+| `RemoveWorkflowSchedule(id)` | Clear `cron` + `nextRunAt` |
+| `GetWorkflowExecutions(id)` | Execution history list |
+| `GetWorkflowExecutionWithPhase(id)` | Full execution + all phases |
+| `GetWorkflowPhaseDetails(id)` | Phase detail with logs + I/O |
+| `CheckWorkflowRunEligibility(id)` | Check PUBLISHED status + credit balance |
+
+---
+
+## Workflow Task Catalog
+
+### 🌐 Browser Tasks
+
+| Task | Credits | Description |
+|---|---|---|
+| `LAUNCH_BROWSER` | 5 | Launch Puppeteer browser instance with a start URL |
+| `PAGE_TO_HTML` | 2 | Get full HTML content of the current page |
+| `NAVIGATE_URL` | 2 | Navigate to a new URL |
+| `SCROLL_TO_ELEMENT` | 1 | Scroll to a CSS selector |
+| `TAKE_SCREENSHOT` | 3 | Capture full-page screenshot |
+
+### 🖱️ Interaction Tasks
+
+| Task | Credits | Description |
+|---|---|---|
+| `FILL_INPUT` | 1 | Fill a form input field |
+| `CLICK_ELEMENT` | 1 | Click a CSS selector |
+| `WAIT_FOR_ELEMENT` | 1 | Wait for an element to appear/disappear |
+| `WAIT_DELAY` | 1 | Pause for N seconds |
+
+### 📤 Extraction Tasks
+
+| Task | Credits | Description |
+|---|---|---|
+| `EXTRACT_TEXT_FROM_ELEMENT` | 2 | Extract text from a CSS selector |
+| `EXTRACT_TABLE_DATA` | 3 | Extract HTML table to JSON array |
+| `EXTRACT_DATA_WITH_AI` | 4 | OpenAI-powered structured data extraction |
+
+### 🔧 Data Processing Tasks
+
+| Task | Credits | Description |
+|---|---|---|
+| `READ_PROPERTY_FROM_JSON` | 1 | Read a key from a JSON string |
+| `ADD_PROPERTY_TO_JSON` | 1 | Add/update a key in a JSON string |
+| `DATA_TRANSFORM` | 2 | Apply transformations to data |
+| `FILTER_DATA` | 1 | Filter JSON array by field + condition |
+| `CONDITIONAL_LOGIC` | 1 | Branch execution based on a condition |
+| `LOOP` | 2 | Iterate over a JSON array |
+
+### 📨 Delivery Tasks
+
+| Task | Credits | Description |
+|---|---|---|
+| `DELIVER_VIA_WEBHOOK` | 2 | POST data to a webhook URL |
+| `SEND_EMAIL` | 3 | Send email via Nodemailer SMTP credential |
+| `DOWNLOAD_FILE` | 2 | Download a file from a URL |
+
+---
+
+## Database Schema
+
+```prisma
+model Workflow {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  definition    String    // JSON: { nodes[], edges[] }
+  executionPlan String?   // JSON: WorkflowExecutionPlan
+  creditsCost   Int       @default(0)
+  status        String    // DRAFT | PUBLISHED
+  cron          String?
+  lastRunAt     DateTime?
+  lastRunId     String?
+  lastRunStatus String?
+  nextRunAt     DateTime?
+  @@unique([name, userId])
+}
+
+model WorkflowExecution {
+  id              String    @id @default(cuid())
+  workflowId      String
+  userId          String
+  trigger         String    // MANUAL | CRON | SCHEDULED
+  status          String    // PENDING | RUNNING | COMPLETED | FAILED
+  creditsConsumed Int       @default(0)
+  definition      String    // snapshot at execution time
+  phases          ExecutionPhase[]
+}
+
+model ExecutionPhase {
+  id              String    @id @default(cuid())
+  userId          String
+  status          String
+  number          Int
+  node            String    // JSON: AppNode
+  name            String
+  inputs          String?   // JSON
+  outputs         String?   // JSON
+  creditsConsumed Int?
+  logs            ExecutionLog[]
+}
+
+model ExecutionLog {
+  id               String   @id @default(cuid())
+  logLevel         String   // info | error
+  message          String
+  timestamp        DateTime @default(now())
+  executionPhaseId String
+}
+
+model UserBalance {
+  userId  String @id
+  credits Int    @default(0)
+}
+
+model Credential {
+  userId      String
+  name        String
+  value       String   // AES-256-CBC encrypted
+  type        String   // smtp_email | api_key | custom
+  description String?
+  @@unique([userId, name])
+}
+
+model UserPurchase {
+  userId      String
+  stripeId    String
+  description String
+  amount      Int
+  currency    String
+}
+```
+
+---
+
+## Environment Variables
+
+Copy [`.env.example`](./.env.example) to `.env.local` and fill in your values.
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | ✅ | Base URL — no trailing slash (e.g. `http://localhost:3000`) |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk publishable key |
+| `CLERK_SECRET_KEY` | ✅ | Clerk secret key |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | ✅ | `/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | ✅ | `/sign-up` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | ✅ | `/` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | ✅ | `/setup` |
+| `STRIPE_SECRET_KEY` | ✅ | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | ✅ | Stripe webhook signing secret |
+| `STRIPE_SMALL_PACK_PRICE_ID` | ✅ | 1,000-credit pack price ID ($9.99) |
+| `STRIPE_MEDIUM_PACK_PRICE_ID` | ✅ | 5,000-credit pack price ID ($39.99) |
+| `STRIPE_LARGE_PACK_PRICE_ID` | ✅ | 10,000-credit pack price ID ($69.99) |
+| `API_SECRET` | ✅ | Internal Bearer secret for cron→execute communication |
+| `ENCRYPTION_SECRET` | ✅ | 64-char hex key for AES-256-CBC credential encryption |
+| `OPENAI_API_KEY` | ✅ | OpenAI API key for the AI extraction task |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v18 or higher)
-- PostgreSQL database (for application data storage)
-- Clerk account (for authentication)
-- Stripe account (for payments)
-- OpenAI API key (for AI features)
-- Resend API key (for email functionality)
 
-### Installation
+- Node.js >= 18
+- PostgreSQL database (Neon / Supabase / Railway / local)
+- Clerk account
+- Stripe account (test mode)
+- OpenAI API key
 
-1. Clone the repository:
+### 1. Clone & Install
+
 ```bash
-git clone https://github.com/your-username/scrape-flow.git
-cd scrape-flow
+git clone https://github.com/kirtan597/ScrapeFlow.git
+cd ScrapeFlow
+npm install --legacy-peer-deps
 ```
 
-2. Install dependencies:
+### 2. Configure Environment
+
 ```bash
-npm install
+cp .env.example .env.local
+# Fill in all values in .env.local
 ```
 
-3. Set up environment variables:
-Create a `.env` file in the root directory and add the necessary environment variables (see [Environment Variables](#environment-variables) section)
+### 3. Set Up Database
 
-4. Run database migrations:
 ```bash
 npx prisma migrate dev
+# Optional: npx prisma studio
 ```
 
-5. Start the development server:
+### 4. Set Up Clerk
+
+1. Create an app at [dashboard.clerk.com](https://dashboard.clerk.com).
+2. Copy the publishable key and secret key into `.env.local`.
+3. Set the **After sign-up URL** to `/setup` in the Clerk dashboard so new users get 100 free credits automatically.
+
+### 5. Set Up Stripe
+
+1. Create 3 one-time products in the Stripe dashboard:
+   - **Small Pack** — $9.99
+   - **Medium Pack** — $39.99
+   - **Large Pack** — $69.99
+2. Copy each Price ID into the corresponding env var.
+3. Add a webhook for `checkout.session.completed` pointing to `https://<your-domain>/api/webhooks/stripe`.
+
+For local webhook testing:
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+### 6. Generate Security Keys
+
+```bash
+# API_SECRET
+openssl rand -hex 32
+
+# ENCRYPTION_SECRET (must be exactly 64 hex chars for AES-256-CBC)
+openssl rand -hex 32
+```
+
+---
+
+## Running Locally
+
 ```bash
 npm run dev
 ```
 
-## Architecture
+Open [http://localhost:3000](http://localhost:3000).
 
-### Workflow Execution Engine
-The application features a sophisticated workflow execution engine that handles:
-- **Task Registry**: Dynamic loading and validation of all task types
-- **Execution Context**: Isolated execution environments for each workflow run
-- **Credit Tracking**: Real-time credit consumption monitoring
-- **Error Recovery**: Automatic retry mechanisms and graceful error handling
-- **Progress Tracking**: Live execution progress updates
+**First-time flow:**
+1. Sign up → `/setup` → 100 credits provisioned → redirected to `/`.
+2. Go to `/workflows` → create → open visual editor.
+3. Connect tasks, save, publish, then run manually or set a cron schedule.
 
-### Data Flow
-1. **Workflow Definition**: Users create workflows using the visual editor
-2. **Validation**: Workflows are validated for completeness and credit requirements
-3. **Execution**: Tasks are executed sequentially with data passing between them
-4. **Monitoring**: Real-time execution monitoring with detailed logging
-5. **Results**: Data is delivered through configured output channels
-
-## Workflow System
-
-### Visual Workflow Editor
-- **Drag-and-Drop Interface**: Intuitive task placement and connection
-- **Real-time Validation**: Immediate feedback on workflow completeness
-- **Task Configuration**: Detailed parameter configuration for each task
-- **Preview Mode**: Test workflows without consuming credits
-- **Export/Import**: Save and share workflow definitions
-
-### Execution Engine
-- **Sequential Processing**: Tasks execute in defined order
-- **Data Persistence**: Workflow state maintained throughout execution
-- **Credit Management**: Pre-execution credit validation and real-time tracking
-- **Error Handling**: Graceful failure recovery with detailed error messages
-- **Execution History**: Complete audit trail of all workflow runs
-
-## Scheduling & Automation
-
-### Hybrid Scheduling System
-To overcome platform limitations, Scrape Flow implements a unique hybrid scheduling approach:
-
-#### Vercel Cron Integration
-- Daily cron job configured in `vercel.json`
-- Serves as a backup execution trigger
-- Ensures workflows are checked at least once daily
-
-#### Browser-Based Local Cron
-- Client-side component running in user browsers
-- Polls `/api/workflows/cron` endpoint at configurable intervals
-- Works in both development and production environments
-- Configurable polling frequency (default: 60 seconds)
-
-### Schedule Types
-
-#### Simple Intervals
-- **Seconds**: `30s` (every 30 seconds)
-- **Minutes**: `5m` (every 5 minutes)
-- **Hours**: `2h` (every 2 hours)
-- **Days**: `1d` (daily)
-
-#### Cron Expressions
-- **Standard Cron**: `0 9 * * 1-5` (weekdays at 9am)
-- **Complex Patterns**: `*/15 * * * *` (every 15 minutes)
-- **Custom Schedules**: Full cron expression support
-
-### Resilience Features
-- **Exponential Backoff**: Automatic retry with increasing delays
-- **Cache Prevention**: Timestamp-based cache busting
-- **Error Recovery**: Continues operation during temporary failures
-- **Resource Optimization**: Minimal API calls when browser is inactive
-
-## Credit System & Billing
-
-### Credit-Based Usage
-- **Transparent Pricing**: Each task type has a defined credit cost
-- **Pre-execution Validation**: Workflows validate credit requirements before running
-- **Real-time Tracking**: Live credit consumption monitoring
-- **Usage Analytics**: Detailed breakdown of credit usage by task type
-
-### Billing Integration
-- **Stripe Integration**: Secure payment processing
-- **Flexible Plans**: Multiple credit packages available
-- **Auto-refill**: Optional automatic credit top-up
-- **Transaction History**: Complete billing history and receipts
-- **Usage Forecasting**: Predict credit needs based on workflow schedules
-
-### Credit Costs by Task Type
-- **High Cost (5 credits)**: Launch Browser
-- **Medium Cost (3-4 credits)**: AI Extraction, Screenshots, File Downloads, Email Sending
-- **Standard Cost (2 credits)**: Data extraction, Navigation
-- **Low Cost (1 credit)**: Simple operations, waits, property manipulation
-
-## Security & Credentials
-
-### Authentication & Authorization
-- **Clerk Integration**: Secure user authentication and session management
-- **Protected Routes**: Middleware-based route protection
-- **API Security**: Secure API endpoints with proper authentication
-- **User Isolation**: Complete data separation between users
-
-### Credential Management
-- **AES-256-CBC Encryption**: Military-grade encryption for stored credentials
-- **Secure Storage**: Database-encrypted credential storage
-- **Access Control**: User-specific credential access
-- **Audit Trail**: Complete history of credential usage
-
-### Security Best Practices
-- **Parameterized Queries**: SQL injection prevention via Prisma
-- **Environment Variables**: Secure secret management
-- **HTTPS Enforcement**: Secure communication channels
-- **Rate Limiting**: Built-in protection against abuse
-
-## Analytics & Monitoring
-
-### Execution Analytics
-- **Success/Failure Rates**: Comprehensive execution statistics
-- **Performance Metrics**: Execution time and resource usage tracking
-- **Credit Consumption**: Detailed credit usage analytics
-- **Trend Analysis**: Historical data and usage patterns
-
-### Real-time Monitoring
-- **Live Execution Tracking**: Real-time workflow execution monitoring
-- **Progress Indicators**: Visual progress tracking for running workflows
-- **Error Reporting**: Immediate error notifications and detailed logs
-- **Performance Alerts**: Automatic alerts for unusual activity
-
-### Dashboard Features
-- **Usage Overview**: High-level statistics and trends
-- **Workflow Performance**: Individual workflow success rates
-- **Credit Forecasting**: Predictive analytics for credit usage
-- **Export Capabilities**: Data export for external analysis
-
-## Environment Variables
-
-### Required Variables
-```env
-DATABASE_URL=postgresql://username:password@host:port/database
-API_SECRET=your-secure-api-secret-for-cron-authentication
-ENCRYPTION_SECRET=32-character-hex-key-for-credential-encryption
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_your-clerk-public-key
-CLERK_SECRET_KEY=sk_test_your-clerk-secret-key
-STRIPE_SECRET_KEY=sk_test_your-stripe-secret-key
-STRIPE_WEBHOOK_SECRET=whsec_your-stripe-webhook-secret
-OPENAI_API_KEY=sk-your-openai-api-key
-RESEND_API_KEY=re_your-resend-api-key
-```
-
-### Optional Variables
-```env
-NEXT_PUBLIC_ENABLE_LOCAL_CRON=true
-NEXT_PUBLIC_LOCAL_CRON_FREQUENCY=60000
-NEXT_PUBLIC_APP_URL=https://your-domain.com
-```
-
-### Configuration Notes
-- **ENCRYPTION_SECRET**: Must be exactly 32 characters (64 hex digits)
-- **API_SECRET**: Used for secure communication between cron endpoints
-- **Local Cron**: Enable for development or enhanced scheduling reliability
-
-## Screenshots
-
-### Login & Signup page
-![SignIn](https://github.com/user-attachments/assets/a9d2e420-fc16-4756-9f29-23f24a5dcce6)
-
-### Home Page
-![HomePage-1](https://github.com/user-attachments/assets/3c769bcb-d283-46a7-ba44-1b1d1b53a5c8)
-
-### Home Page With Chart
-![HomePage-2](https://github.com/user-attachments/assets/f4806685-eefe-4ab6-a67c-5a99691ca724)
-
-### Workflow Page
-![WorkFlow](https://github.com/user-attachments/assets/dbc7c21c-613e-4c16-8261-8db3c420aaea)
-
-### Workflow Page With Action
-![WorkFlowAction](https://github.com/user-attachments/assets/7ffef8ec-b8be-4869-a950-6900b809410d)
-
-### Workflow Creation
-![WorkFlowCreationForm](https://github.com/user-attachments/assets/d8606910-f684-4241-b39c-c65a0daf1780)
-
-### Workflow Scheduler Configuration
-![WorkFlowCronJob](https://github.com/user-attachments/assets/d1ed026a-6ab3-46ff-8ff9-b69c85583c0f)
-
-### Workflow Editor
-![WorkFlowCreation-1](https://github.com/user-attachments/assets/e08c0d60-aa45-4d3d-9b28-d6a629128fa2)
-
-### Workflow Editor Validation 
-![WorkFlowCreation-2](https://github.com/user-attachments/assets/466dff29-5396-4161-87aa-5d613f778d82)
-
-### Execution Monitor
-![WorkFlowSucess](https://github.com/user-attachments/assets/b206a159-37c7-4b48-98d7-9e324204f1eb)
-
-### All Workflow
-![AllWorkFlow](https://github.com/user-attachments/assets/d97f75bb-d4cf-48a9-a235-ee7d706a90ba)
-
-### Credential Page
-![image](https://github.com/user-attachments/assets/31870f1d-de1b-4d99-a3cf-508574b43773)
-
-### Credential creation form
-![image](https://github.com/user-attachments/assets/51d6fb68-4ba8-48ad-b7f4-ca168b5b405e)
-
-### Billing Page
-![Billing-1](https://github.com/user-attachments/assets/91b206ec-95f2-42b7-819a-1980ad55a920)
-
-### Billing Chart
-![Billing-2](https://github.com/user-attachments/assets/4dd52d31-efd7-4228-a085-6b53827d9bdf)
-
-### Transaction History
-![Billing-3](https://github.com/user-attachments/assets/e752b5b3-84de-46c0-892c-53e1465d2d0e)
-
-### Payment Invoice
-![image](https://github.com/user-attachments/assets/d879a925-a36e-48b2-8c67-ed7e53d041d7)
-
-
-
-## Deployment
-
-### Vercel Deployment (Recommended)
-1. **Repository Setup**: Connect your GitHub repository to Vercel
-2. **Environment Configuration**: Add all required environment variables in Vercel dashboard
-3. **Database Setup**: Configure PostgreSQL database for application data (Vercel Postgres recommended)
-4. **Deployment**: Deploy the application through Vercel interface
-5. **Cron Configuration**: Verify `vercel.json` cron configuration is active
-
-### Manual Deployment
-1. **Build**: `npm run build`
-2. **Database**: Run migrations in production environment
-3. **Environment**: Ensure all environment variables are properly set
-4. **Start**: `npm start` or use process manager like PM2
-
-### Post-Deployment Checklist
-- [ ] Verify application database connections
-- [ ] Test authentication flow
-- [ ] Confirm Stripe webhook endpoints
-- [ ] Validate cron job execution
-- [ ] Test workflow creation and execution
-- [ ] Verify email functionality
-
-## Contributing
-
-We welcome contributions to Scrape Flow! Please follow these guidelines:
-
-### Development Setup
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Make your changes with appropriate tests
-4. Ensure code follows existing style guidelines
-5. Submit a pull request with detailed description
-
-### Adding New Task Types
-1. Create task definition in `lib/workflow/task/`
-2. Add task to registry in `lib/workflow/task/registry.tsx`
-3. Implement executor in `lib/workflow/executor/`
-4. Add proper TypeScript types
-5. Include comprehensive tests
-
-### Coding Standards
-- **TypeScript**: Strict mode enabled, proper type definitions required
-- **Formatting**: Prettier and ESLint configurations must be followed
-- **Testing**: Unit tests required for new features
-- **Documentation**: Update README and inline documentation
-
-### Bug Reports
-Please include:
-- Detailed description of the issue
-- Steps to reproduce
-- Expected vs actual behavior
-- Environment details (Node.js version, browser, etc.)
-- Screenshots if applicable
+> **Dev Cron:** The `LocalCronRunner` component polls `/api/workflows/cron` every minute in development to simulate the production scheduler.
 
 ---
 
-## Development Commands
+## Deployment Notes
 
-```bash
-# Database management
-npx prisma migrate dev    # Run database migrations
-npx prisma studio        # Open Prisma Studio
-npx prisma generate      # Generate Prisma client
+### Vercel
 
-# Development
-npm run dev             # Start development server
-npm run build          # Build for production
-npm run start          # Start production server
+1. Import the repo into Vercel and add all env vars.
+2. Add `vercel.json` for cron scheduling:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/workflows/cron",
+      "schedule": "* * * * *"
+    }
+  ]
+}
 ```
+
+3. The build script `prisma generate && next build` is pre-configured.
+
+### Puppeteer on Serverless
+
+`puppeteer-core` + `@sparticuz/chromium-min` handle headless Chrome on serverless platforms. Both packages are listed in `serverExternalPackages` in `next.config.mjs` to prevent bundling issues.
 
 ---
 
-**License**: MIT License  
-**Maintainer**: Harmik Lathiya
-**Support**: [Create an issue](https://github.com/Lathiya50/scrape-flow/issues)
+## Scripts
+
+| Script | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm run build` | `prisma generate` + `next build` |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run prisma:migrate` | Run `prisma migrate dev` |
+| `npm run prisma:generate` | Run `prisma generate` |
+| `npm run prisma:studio` | Open Prisma Studio |
+
+---
+
+## License
+
+MIT
